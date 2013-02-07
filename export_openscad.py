@@ -19,6 +19,7 @@
 # <pep8 compliant>
 
 import os
+import re
 import time
 
 import bpy
@@ -47,6 +48,10 @@ def write_file(filepath, objects, scene,
     time1 = time.time()
 
     file = open(filepath, "w", encoding="utf8", newline="\n")
+    filename_prefix=re.sub(
+        '[\.]','_'
+        ,os.path.splitext( os.path.basename( file.name ) )[0]
+        )
     fw = file.write
 
     # Initialize totals, these are updated each object
@@ -93,8 +98,12 @@ def write_file(filepath, objects, scene,
                 bpy.data.meshes.remove(me)
                 continue  # dont bother with this mesh.
 
-            fw('// Exported from Blender\n')
-            fw('function blender_triangles()=[')
+
+            fw('// Exported from Blender to '+file.name+'\n')
+            fw('\necho("Export from Blender to '+file.name+'");\n')
+            fw('echo("  Triangles function: '+filename_prefix+'_triangles()");\n')
+            fw('echo("  Points function: '+filename_prefix+'_points()");\n')
+            fw('\nfunction '+filename_prefix+'_triangles()=[')
             for f, f_index in face_index_pairs:
                 f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
 
@@ -126,15 +135,15 @@ def write_file(filepath, objects, scene,
                     face_vert_index += len(f_v)
                     fw(']')
             fw('];\n')
-            fw('function blender_points() = [')
+            fw('function '+filename_prefix+'_points() = [')
             for vertKey, vi in enumerate(globalVerts):
               if vi != 0:
                 fw(',')
               fw('[%f,%f,%f]' % globalVerts[vi])
             fw('];\n')
-            fw('polyhedron(\n')
-            fw('  triangles=blender_triangles()\n')
-            fw('  , points=blender_points()\n')
+            fw('\npolyhedron(\n')
+            fw('  triangles='+filename_prefix+'_triangles()\n')
+            fw('  , points='+filename_prefix+'_points()\n')
             fw(');\n')
 
             # Make the indices global rather then per mesh
