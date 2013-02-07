@@ -93,8 +93,8 @@ def write_file(filepath, objects, scene,
                 bpy.data.meshes.remove(me)
                 continue  # dont bother with this mesh.
 
-            fw('polyhedron(\n')
-            fw('triangles=[')
+            fw('// Exported from Blender\n')
+            fw('function blender_triangles()=[')
             for f, f_index in face_index_pairs:
                 f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
 
@@ -125,13 +125,16 @@ def write_file(filepath, objects, scene,
 
                     face_vert_index += len(f_v)
                     fw(']')
-            fw('],\n')
-            fw('points = [')
+            fw('];\n')
+            fw('function blender_points() = [')
             for vertKey, vi in enumerate(globalVerts):
               if vi != 0:
                 fw(',')
               fw('[%f,%f,%f]' % globalVerts[vi])
-            fw(']\n')
+            fw('];\n')
+            fw('polyhedron(\n')
+            fw('  triangles=blender_triangles()\n')
+            fw('  , points=blender_points()\n')
             fw(');\n')
 
             # Make the indices global rather then per mesh
