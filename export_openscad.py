@@ -100,6 +100,28 @@ def write_file(filepath, objects, scene,
 
 
             fw("""// Exported from Blender to """+file.name+"""
+//
+//  Usage:
+//
+//    To reference this file in another OpenSCAD file, use the 'use' syntax instead of 'include' 
+//    so the test structures aren't evaluated:
+//      use <"""+file.name+""">;
+//
+//    Triangles function:
+//      """+filename_prefix+"""_triangles()
+//
+//    Points function:
+//      """+filename_prefix+"""_points()
+//
+//    Polyhedron module:
+//      """+filename_prefix+"""(type="polyhedron");
+//
+//    Frame module:
+//      """+filename_prefix+"""(type="frame",frame_th=0.1);
+//
+//    Shell module:
+//      """+filename_prefix+"""(type="shell",shell_th=0.1);
+//
 //  Note: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
 //    try using the "frame" or "shell" variants.
 """)
