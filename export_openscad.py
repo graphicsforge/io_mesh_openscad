@@ -99,19 +99,16 @@ def write_file(filepath, objects, scene,
             fw("""//
 //    Triangles function:
 //      """+object_prefix+"""_triangles()
-//
 //    Points function:
 //      """+object_prefix+"""_points()
-//
+//    Multmatrix function:
+//      """+object_prefix+"""_multmatrix()
 //    Polyhedron module:
 //      """+object_prefix+"""(type="polyhedron");
-//
 //    Frame module:
 //      """+object_prefix+"""(type="frame",frame_th=0.1);
-//
 //    Shell module:
 //      """+object_prefix+"""(type="shell",shell_th=0.1);
-//
 """)
 
     fw("""//
@@ -168,11 +165,12 @@ def write_file(filepath, objects, scene,
                 continue  # dont bother with this mesh.
 
             fw('\n')
-            fw('echo("  Triangles function: '+object_prefix+'_triangles()");\n')
-            fw('echo("  Points function: '+object_prefix+'_points()");\n')
+            fw('echo("   Triangles function: '+object_prefix+'_triangles()");\n')
+            fw('echo("      Points function: '+object_prefix+'_points()");\n')
+            fw('echo("  Multmatrix function: '+object_prefix+'_multmatrix()");\n')
             fw('if(render_part=="polyhedron") {\n')
             fw('  echo("Rendering '+object_prefix+'(type=\\"polyhedron\\")...");\n')
-            fw('    '+object_prefix+'(type="polyhedron");\n')
+            fw('    multmatrix('+object_prefix+'_multmatrix()) '+object_prefix+'(type="polyhedron");\n')
             fw('}\n')
             fw('if(render_part=="frame") {\n')
             fw('  echo("Rendering '+object_prefix+'(type=\\"frame\\",frame_th=0.1)...");\n')
@@ -217,6 +215,17 @@ def write_file(filepath, objects, scene,
             fw('        }\n')
             fw('    }\n')
             fw('}\n')
+            fw('\nfunction '+object_prefix+'_multmatrix()=[')
+            for r_i in range(4):
+                if r_i != 0:
+                    fw(',')
+                fw('[')
+                for c_j in range(4):
+                    if c_j != 0:
+                        fw(',')
+                    fw('%f' % ob_main.matrix_world[r_i][c_j])
+                fw(']')
+            fw('];\n')
             fw('\nfunction '+object_prefix+'_triangles()=[')
             for f, f_index in face_index_pairs:
                 f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
