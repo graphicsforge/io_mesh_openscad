@@ -112,7 +112,8 @@ def write_file(filepath, objects, scene,
 """)
 
     fw("""//
-//  Note: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
+//  Note 1: Switch to "View - Thrown Together (F12)" and look for purple-showing facets to debug incomplete mesh polyhedron issues.
+//  Note 2: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
 //    try using the "frame" or "shell" variants.
 """)
 
