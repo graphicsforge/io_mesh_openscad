@@ -54,16 +54,6 @@ def write_file(filepath, objects, scene,
         )
     fw = file.write
 
-    # Initialize totals, these are updated each object
-    totverts = totuvco = totno = 1
-    vertIndex = -1
-
-    face_vert_index = 1
-
-    globalVerts = {}
-    vertDict = {}
-
-    copy_set = set()
 
     fw("""// Exported from Blender to """+file.name+"""
 //
@@ -129,8 +119,19 @@ def write_file(filepath, objects, scene,
 //    try using the "frame" or "shell" variants.
 """)
 
+    copy_set = set()
+    totverts = totuvco = totno = 1
+
     # Get all meshes
     for ob_main in objects:
+
+        # Initialize totals, these are updated each object
+        vertIndex = -1
+
+        face_vert_index = 1
+
+        globalVerts = {}
+        vertDict = {}
 
         # ignore dupli children
         if ob_main.parent and ob_main.parent.dupli_type in {'VERTS', 'FACES'}:
