@@ -49,7 +49,7 @@ def write_file(filepath, objects, scene,
 
     file = open(filepath, "w", encoding="utf8", newline="\n")
     filename_prefix=re.sub(
-        '[\.]','_'
+        '[\. ]','_'
         ,os.path.splitext( os.path.basename( file.name ) )[0]
         )
     fw = file.write
@@ -65,6 +65,70 @@ def write_file(filepath, objects, scene,
 
     copy_set = set()
 
+    fw("""// Exported from Blender to """+file.name+"""
+//
+//  Usage:
+//
+//    To reference this file in another OpenSCAD file, use the 'use' syntax instead of 'include' 
+//    so the test structures aren't evaluated:
+//      use <"""+file.name+""">;
+""")
+    fw('\necho("Export from Blender to '+file.name+'");\n')
+    fw('render_part="polyhedron";\n')
+    fw('// render_part="frame";\n')
+    fw('// render_part="shell";\n')
+    fw('// render_part="shell_with_diff";\n')
+    fw('\n')
+
+    # Print header information at top of file.
+    for ob_main in objects:
+
+        # ignore dupli children
+        if ob_main.parent and ob_main.parent.dupli_type in {'VERTS', 'FACES'}:
+            continue
+
+        obs = []
+        if ob_main.dupli_type != 'NONE':
+            ob_main.dupli_list_create(scene)
+            obs = [(dob.object, dob.matrix) for dob in ob_main.dupli_list]
+        else:
+            obs = [(ob_main, ob_main.matrix_world)]
+
+        object_prefix=filename_prefix+"_"+re.sub(
+            '[\. ]','_'
+            ,ob_main.name
+            )
+        for ob, ob_mat in obs:
+            try:
+                me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
+            except RuntimeError:
+                me = None
+            if me is None:
+                continue
+
+            fw("""//
+//    Triangles function:
+//      """+object_prefix+"""_triangles()
+//
+//    Points function:
+//      """+object_prefix+"""_points()
+//
+//    Polyhedron module:
+//      """+object_prefix+"""(type="polyhedron");
+//
+//    Frame module:
+//      """+object_prefix+"""(type="frame",frame_th=0.1);
+//
+//    Shell module:
+//      """+object_prefix+"""(type="shell",shell_th=0.1);
+//
+""")
+
+    fw("""//
+//  Note: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
+//    try using the "frame" or "shell" variants.
+""")
+
     # Get all meshes
     for ob_main in objects:
 
@@ -79,6 +143,10 @@ def write_file(filepath, objects, scene,
         else:
             obs = [(ob_main, ob_main.matrix_world)]
 
+        object_prefix=filename_prefix+"_"+re.sub(
+            '[\. ]','_'
+            ,ob_main.name
+            )
         for ob, ob_mat in obs:
             try:
                 me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
@@ -98,89 +166,57 @@ def write_file(filepath, objects, scene,
                 bpy.data.meshes.remove(me)
                 continue  # dont bother with this mesh.
 
-
-            fw("""// Exported from Blender to """+file.name+"""
-//
-//  Usage:
-//
-//    To reference this file in another OpenSCAD file, use the 'use' syntax instead of 'include' 
-//    so the test structures aren't evaluated:
-//      use <"""+file.name+""">;
-//
-//    Triangles function:
-//      """+filename_prefix+"""_triangles()
-//
-//    Points function:
-//      """+filename_prefix+"""_points()
-//
-//    Polyhedron module:
-//      """+filename_prefix+"""(type="polyhedron");
-//
-//    Frame module:
-//      """+filename_prefix+"""(type="frame",frame_th=0.1);
-//
-//    Shell module:
-//      """+filename_prefix+"""(type="shell",shell_th=0.1);
-//
-//  Note: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
-//    try using the "frame" or "shell" variants.
-""")
-            fw('\necho("Export from Blender to '+file.name+'");\n')
-            fw('echo("  Triangles function: '+filename_prefix+'_triangles()");\n')
-            fw('echo("  Points function: '+filename_prefix+'_points()");\n')
-            fw('render_part="polyhedron";\n')
-            fw('// render_part="frame";\n')
-            fw('// render_part="shell";\n')
-            fw('// render_part="shell_with_diff";\n')
             fw('\n')
+            fw('echo("  Triangles function: '+object_prefix+'_triangles()");\n')
+            fw('echo("  Points function: '+object_prefix+'_points()");\n')
             fw('if(render_part=="polyhedron") {\n')
-            fw('  echo("Rendering '+filename_prefix+'(type=\\"polyhedron\\")...");\n')
-            fw('    '+filename_prefix+'(type="polyhedron");\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"polyhedron\\")...");\n')
+            fw('    '+object_prefix+'(type="polyhedron");\n')
             fw('}\n')
             fw('if(render_part=="frame") {\n')
-            fw('  echo("Rendering '+filename_prefix+'(type=\\"frame\\",frame_th=0.1)...");\n')
-            fw('    '+filename_prefix+'(type="frame",frame_th=0.1);\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"frame\\",frame_th=0.1)...");\n')
+            fw('    '+object_prefix+'(type="frame",frame_th=0.1);\n')
             fw('}\n')
             fw('if(render_part=="shell") {\n')
-            fw('  echo("Rendering '+filename_prefix+'(type=\\"shell\\",shell_th=0.1)...");\n')
-            fw('    '+filename_prefix+'(type="shell",shell_th=0.1);\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"shell\\",shell_th=0.1)...");\n')
+            fw('    '+object_prefix+'(type="shell",shell_th=0.1);\n')
             fw('}\n')
             fw('if(render_part=="shell_with_diff") {\n')
-            fw('  echo("Rendering '+filename_prefix+'(type=\\"shell\\",shell_th=0.1) differenced with cube(100,center=false)...");\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"shell\\",shell_th=0.1) differenced with cube(100,center=false)...");\n')
             fw('  difference() {\n')
-            fw('    '+filename_prefix+'(type="shell",shell_th=0.1);\n')
+            fw('    '+object_prefix+'(type="shell",shell_th=0.1);\n')
             fw('    cube(100,center=false);\n')
             fw('  }\n')
             fw('}\n')
-            fw('\nmodule '+filename_prefix+'(type="polyhedron"\n')
+            fw('\nmodule '+object_prefix+'(type="polyhedron"\n')
             fw('    , frame_th=0.1\n')
             fw('    , shell_th=0.1\n')
             fw('    ) {\n')
             fw('    if(type=="polyhedron") {\n')
             fw('        polyhedron(\n')
-            fw('            triangles='+filename_prefix+'_triangles()\n')
-            fw('            , points='+filename_prefix+'_points()\n')
+            fw('            triangles='+object_prefix+'_triangles()\n')
+            fw('            , points='+object_prefix+'_points()\n')
             fw('        );\n')
             fw('    } else if(type=="frame") {\n')
-            fw('        for(i=[0:len('+filename_prefix+'_triangles())-1]) assign(triangle='+filename_prefix+'_triangles()[i]) {\n')
+            fw('        for(i=[0:len('+object_prefix+'_triangles())-1]) assign(triangle='+object_prefix+'_triangles()[i]) {\n')
             fw('            for(j=[0:2]) {\n')
             fw('                hull() {\n')
-            fw('                    translate('+filename_prefix+'_points()[triangle[j%3]]) sphere($fn=4,r=frame_th/2);\n')
-            fw('                    translate('+filename_prefix+'_points()[triangle[(j+1)%3]]) sphere($fn=4,r=frame_th/2);\n')
+            fw('                    translate('+object_prefix+'_points()[triangle[j%3]]) sphere($fn=4,r=frame_th/2);\n')
+            fw('                    translate('+object_prefix+'_points()[triangle[(j+1)%3]]) sphere($fn=4,r=frame_th/2);\n')
             fw('                }\n')
             fw('            }\n')
             fw('        }\n')
             fw('    } else if(type=="shell") {\n')
-            fw('        for(i=[0:len('+filename_prefix+'_triangles())-1]) assign(triangle='+filename_prefix+'_triangles()[i]) {\n')
+            fw('        for(i=[0:len('+object_prefix+'_triangles())-1]) assign(triangle='+object_prefix+'_triangles()[i]) {\n')
             fw('            hull() {\n')
-            fw('                translate('+filename_prefix+'_points()[triangle[0]]) sphere($fn=4,r=shell_th/2);\n')
-            fw('                translate('+filename_prefix+'_points()[triangle[1]]) sphere($fn=4,r=shell_th/2);\n')
-            fw('                translate('+filename_prefix+'_points()[triangle[2]]) sphere($fn=4,r=shell_th/2);\n')
+            fw('                translate('+object_prefix+'_points()[triangle[0]]) sphere($fn=4,r=shell_th/2);\n')
+            fw('                translate('+object_prefix+'_points()[triangle[1]]) sphere($fn=4,r=shell_th/2);\n')
+            fw('                translate('+object_prefix+'_points()[triangle[2]]) sphere($fn=4,r=shell_th/2);\n')
             fw('            }\n')
             fw('        }\n')
             fw('    }\n')
             fw('}\n')
-            fw('\nfunction '+filename_prefix+'_triangles()=[')
+            fw('\nfunction '+object_prefix+'_triangles()=[')
             for f, f_index in face_index_pairs:
                 f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
 
@@ -212,7 +248,7 @@ def write_file(filepath, objects, scene,
                     face_vert_index += len(f_v)
                     fw(']')
             fw('];\n')
-            fw('function '+filename_prefix+'_points() = [')
+            fw('function '+object_prefix+'_points() = [')
             for vertKey, vi in enumerate(globalVerts):
               if vi != 0:
                 fw(',')
