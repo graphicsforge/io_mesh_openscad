@@ -19,350 +19,212 @@
 # <pep8 compliant>
 
 import os
+import re
 import time
 
 import bpy
 import mathutils
 import bpy_extras.io_utils
 
+# dump some stuff we might want later in openscad
+def write_info( fw, object ):
+  fw("// set info variables for %s\n" % object.data.name)
+  fw("%s_dims = [%.2f,%.2f,%.2f];\n" % (object.data.name,object.dimensions[0],object.dimensions[1],object.dimensions[2]))
+  fw("%s_num_verts = %d;\n" % (object.data.name,len(object.data.vertices)))
 
-def name_compat(name):
-    if name is None:
-        return 'None'
-    else:
-        return name.replace(' ', '_')
+# output our comments about shapekey objects
+def write_shapekey_commments( fw, object ):
+  mesh = object.data
+  if (len(mesh.polygons) + len(mesh.vertices)):
+    # grab our shapekeys, excluding our reference
+    nonRefShapeKeys = {}
+    for index, keyblock in enumerate(mesh.shape_keys.key_blocks):
+      if keyblock.name == mesh.shape_keys.reference_key.name:
+        continue
+      else:
+        nonRefShapeKeys[len(nonRefShapeKeys)] = keyblock
 
+    # say what we're going to do
+    fw("\n//exports module %s(" % mesh.name)
+    for i, key in enumerate(nonRefShapeKeys):
+      if i!=0:
+        fw(",\n//\t\t\t")
+      fw("%s_value = 0" % nonRefShapeKeys[i].name)
+    fw(")\n")
 
-def write_shapes_file(  filepath, object, scene,
-                EXPORT_APPLY_MODIFIERS=True,
-                EXPORT_PATH_MODE='AUTO',
-                ):
-    """
-    Basic write function. The context and options must be already set
-    """
+    # draw the mesh with default key values
+    fw("//draw geometry like this\n%s();\n" % mesh.name)
 
-    def veckey3d(v):
-        return round(v.x, 6), round(v.y, 6), round(v.z, 6)
+    # drop info variables
+    write_info( fw, object )
 
-    time1 = time.time()
+# output our comments about objects
+def write_object_commments( fw, object ):
+  mesh = object.data
+  if (len(mesh.polygons) + len(mesh.vertices)):
+    # say what we're going to do
+    fw("\n//exports module %s()\n" % mesh.name)
 
-    file = open(filepath, "w", encoding="utf8", newline="\n")
-    fw = file.write
+    # draw the mesh with default key values
+    fw("//draw geometry like this\n%s();\n" % mesh.name)
 
-    # Initialize totals, these are updated each object
-    totverts = totuvco = totno = 1
-    vertIndex = -1
+    # drop info variables
+    write_info( fw, object )
 
-    face_vert_index = 1
+# output an object that has shapekeys
+def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
 
-    globalVerts = {}
-    vertDict = {}
+  # if an object has geometry, export them
+  mesh = object.data
+  if (len(mesh.polygons) + len(mesh.vertices)):
+    # grab our shapekeys, excluding our reference
+    nonRefShapeKeys = {}
+    for index, keyblock in enumerate(mesh.shape_keys.key_blocks):
+      if keyblock.name == mesh.shape_keys.reference_key.name:
+        continue
+      else:
+        nonRefShapeKeys[len(nonRefShapeKeys)] = keyblock
 
-    copy_set = set()
-
-
-    if object.type == 'MESH' and object.data.shape_keys:
+    # drop our geometry
+    fw("\n\n// this is the geometry for %s (sorry, not human editable)\n" % mesh.name)
+    fw("%s_triangles = [\n" % mesh.name)
+    for index, face in enumerate(mesh.polygons):
+      face_verts = face.vertices
+      if index != 0:
+          fw(',')
+      # fan triangulate
+      for i in range(2, len(face_verts), 1):
+        if i>2:
+          fw(",")
+        fw("[%d,%d,%d]" % (face_verts[i],face_verts[i-1],face_verts[0]))
+    fw("];\n")
     
-        mesh = object.data
-        mesh_verts = mesh.vertices[:]
-        mesh_face_index = [(index, face) for index, face in enumerate(mesh.polygons)]
-        mesh_shape_index = [(index, keyblock) for index, keyblock in enumerate(mesh.shape_keys.key_blocks)]
-        
-        if (len(mesh_face_index) + len(mesh_verts)):
-            
-            
-            fw('%s' % mesh.name)
-            fw('_dimensions = ')
-            fw('[%f,%f,%f];\n\n' % (object.dimensions[0],object.dimensions[1],object.dimensions[2]))
-            
-            #this adds the slider control variables for the shapes in customizer
-            for index, keyblock in mesh_shape_index:
-            	if keyblock.name == mesh.shape_keys.reference_key.name:
-            		continue
-            	else:
-                	fw('%s' % keyblock.name)
-                	fw('_value = 0; //[0:100]\n\n')
-            
-              #uncomment to include original mesh vert positions (shouldn't be needed since basis shapekey will have this info)
-#             fw('%s' % mesh.name)
-#             fw('_original_points = [[')
-#             print(mesh_verts)
-#             for vertex in mesh_verts:
-#                 if vertex.index != 0:
-#                     fw(',')
-#                 fw('%f,%f,%f]' % (vertex.co.x,vertex.co.y,vertex.co.z))
-#             fw('];')
+    for index, keyblock in enumerate(mesh.shape_keys.key_blocks):
+        shape_verts_index = [(index, shape_vertex) for index, shape_vertex in enumerate(keyblock.data)]
+        fw("%s_%s_points=[\n" % (mesh.name, keyblock.name))
+        for index, vertex in shape_verts_index:
+            if index != 0:
+                fw(",")
+            fw("[%f,%f,%f]" % (vertex.co.x,vertex.co.y,vertex.co.z))
+        fw("];\n")
 
-            fw('polyhedron(triangles = ')
-            fw('%s' % mesh.name)
-            fw('_triangles, points = ')
-            fw('%s' % mesh.name)
-            fw('_shapes_points);\n\n')
-            
+    fw("module %s(" % mesh.name)
+    for i, key in enumerate(nonRefShapeKeys):
+      if i!=0:
+        fw(", ")
+      fw("%s_value = 0" % nonRefShapeKeys[i].name)
+    fw(") {\n")
 
+    fw("  %s_shapes_points = [\n" % mesh.name)
+    for vertex in mesh.vertices:
+      if vertex.index != 0:
+        fw(",")
+      fw("[")
+      for com_index, component in enumerate(vertex.co):
+        if com_index != 0:
+          fw(",")
+        for key_index, keyblock in enumerate(mesh.shape_keys.key_blocks):
+          # combine the effect of each shapekey
+          if key_index != 0:
+            fw("+")
+          if keyblock.name == mesh.shape_keys.reference_key.name:
+            fw("%s_%s_points[%d][%d]" % (mesh.name, keyblock.name, vertex.index, com_index))
+          else:
+            # linearly interpolate between key and base
+            fw("((%s_%s_points[%d][%d]-" % (mesh.name, keyblock.name, vertex.index, com_index))
+            fw("%s_%s_points[%d][%d])*" % (mesh.name, keyblock.relative_key.name, vertex.index, com_index))
+            fw("%s_value/100)" % keyblock.name)
+      fw("]")
+    fw("];")
+    fw("  polyhedron(triangles = %s_triangles, points = %s_shapes_points);\n" % (mesh.name, mesh.name))
+    fw("};\n")
 
-            fw('%s' % mesh.name)
-            fw('_triangles = [')            
-            for index, face in mesh_face_index:
-                face_verts = face.vertices
-                if index != 0:
-                    fw(',')
-                if len(face_verts) == 3:
-                    fw('[%d,%d,%d]' % (face_verts[2], face_verts[1], face_verts[0]))
-                else:
-                    fw('[%d,%d,%d],[%d,%d,%d]' % (face_verts[2],face_verts[1],face_verts[0],face_verts[3],face_verts[2],face_verts[0]))
-            fw('];\n\n')
-            
-            for index, keyblock in mesh_shape_index:
-                shape_verts_index = [(index, shape_vertex) for index, shape_vertex in enumerate(keyblock.data)]
-                fw('%s' % mesh.name)
-                fw('_')
-                fw('%s' % keyblock.name)
-                fw('_points = [')
-                for index, vertex in shape_verts_index:
-                    if index != 0:
-                        fw(',')
-                    fw('[%f,%f,%f]' % (vertex.co.x,vertex.co.y,vertex.co.z))
-                fw('];\n\n')
-            
+  else:
+    print("ERROR: tried to export a mesh without sufficient verts!")
 
+# output an object
+def write_object( fw, object, mesh ):
 
-            fw('%s' % mesh.name)
-            fw('_shapes_points = [')
-            for vertex in mesh_verts:
-                if vertex.index != 0:
-                    fw(',')
-                fw('[')
-                for com_index, component in enumerate(vertex.co):
-                    if com_index != 0:
-                        fw(',')
-                    for key_index, keyblock in mesh_shape_index:
-                        if key_index != 0:
-                            fw('+')
-                        if keyblock.name == mesh.shape_keys.reference_key.name:
-                            fw('%s' % mesh.name)
-                            fw('_')
-                            fw('%s' % keyblock.name)
-                            fw('_points[')
-                            fw('%d]' % vertex.index)
-                            fw('[%d]' % com_index)
-                        else:
-                            fw('((')
-                            fw('%s' % mesh.name)
-                            fw('_')
-                            fw('%s' % keyblock.name)
-                            fw('_points[')
-                            fw('%d]' % vertex.index)
-                            fw('[%d]-' % com_index)
-                            fw('%s' % mesh.name)
-                            fw('_')
-                            fw('%s' % keyblock.relative_key.name)
-                            fw('_points[')
-                            fw('%d]' % vertex.index)
-                            fw('[%d])*' % com_index)
-                            fw('%s' % keyblock.name)
-                            fw('_value/100)')
-                fw(']')
-            fw('];')
-                            
-            
-#           fw('polyhedron(\n')
-#           fw('triangles=[')
-#           for f, f_index in face_index_pairs:
-#               f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
-#       
-#               # openscad has flipped winding and doesn't handle quads
-#               if len(f_v_orig) == 3:
-#                   f_v_iter = (f_v_orig[2], f_v_orig[1], f_v_orig[0]),
-#               else:
-#                   f_v_iter = (f_v_orig[2], f_v_orig[1], f_v_orig[0]), (f_v_orig[3], f_v_orig[2], f_v_orig[0])
-#       
-#               # support for triangulation
-#               for f_v in f_v_iter:
-#                   if len(globalVerts) != 0:
-#                       fw(', ')
-#                   fw('[')
-#                   vertexIndex = 0
-#                   for vi, v in f_v:
-#                       if vertexIndex != 0:
-#                           fw(',')
-#                       vertexIndex += 1
-#                       vertKey = veckey3d(v.co)
-#                       if vertKey not in vertDict:
-#                           vertIndex += 1
-#                           globalVerts[vertIndex] = vertKey
-#                           vertDict[vertKey] = vertIndex
-#                           fw('%d' % vertIndex)
-#                       else:
-#                           fw('%d' % vertDict[vertKey])
-#       
-#                   face_vert_index += len(f_v)
-#                   fw(']')
-#           fw('],\n')
-#           fw('points = [')
-#           for vertKey, vi in enumerate(globalVerts):
-#             if vi != 0:
-#               fw(',')
-#             fw('[%f,%f,%f]' % globalVerts[vi])
-#           fw(']\n')
-#           fw(');\n')
-
-    file.close()
-
-    # copy all collected files.
-    bpy_extras.io_utils.path_reference_copy(copy_set)
-
-    print("OpenSCAD Export time: %.2f" % (time.time() - time1))
-
-def write_file( filepath, objects, scene,
-                EXPORT_APPLY_MODIFIERS=True,
-                EXPORT_PATH_MODE='AUTO',
-                ):
-    """
-    Basic write function. The context and options must be already set
-    """
-
-    def veckey3d(v):
-        return round(v.x, 6), round(v.y, 6), round(v.z, 6)
-
-    time1 = time.time()
-
-    file = open(filepath, "w", encoding="utf8", newline="\n")
-    fw = file.write
-
-    # Initialize totals, these are updated each object
-    totverts = totuvco = totno = 1
-    vertIndex = -1
-
-    face_vert_index = 1
-
-    globalVerts = {}
-    vertDict = {}
-
-    copy_set = set()
-
-    # Get all meshes
-    for ob_main in objects:
-
-        # ignore dupli children
-        if ob_main.parent and ob_main.parent.dupli_type in {'VERTS', 'FACES'}:
-            continue
-
-        obs = []
-        if ob_main.dupli_type != 'NONE':
-            ob_main.dupli_list_create(scene)
-            obs = [(dob.object, dob.matrix) for dob in ob_main.dupli_list]
-        else:
-            obs = [(ob_main, ob_main.matrix_world)]
-
-        for ob, ob_mat in obs:
-            try:
-                me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
-            except RuntimeError:
-                me = None
-            if me is None:
-                continue
-
-            me_verts = me.vertices[:]
-
-            # Make our own list so it can be sorted to reduce context switching
-            face_index_pairs = [(face, index) for index, face in enumerate(me.tessfaces)]
-            edges = []
-
-            if not (len(face_index_pairs) + len(edges) + len(me.vertices)):  # Make sure there is somthing to write
-                # clean up
-                bpy.data.meshes.remove(me)
-                continue  # dont bother with this mesh.
-
-            fw('polyhedron(\n')
-            fw('triangles=[')
-            for f, f_index in face_index_pairs:
-                f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
-
-                # openscad has flipped winding and doesn't handle quads
-                if len(f_v_orig) == 3:
-                    f_v_iter = (f_v_orig[2], f_v_orig[1], f_v_orig[0]),
-                else:
-                    f_v_iter = (f_v_orig[2], f_v_orig[1], f_v_orig[0]), (f_v_orig[3], f_v_orig[2], f_v_orig[0])
-
-                # support for triangulation
-                for f_v in f_v_iter:
-                    if len(globalVerts) != 0:
-                        fw(', ')
-                    fw('[')
-                    vertexIndex = 0
-                    for vi, v in f_v:
-                        if vertexIndex != 0:
-                            fw(',')
-                        vertexIndex += 1
-                        vertKey = veckey3d(v.co)
-                        if vertKey not in vertDict:
-                            vertIndex += 1
-                            globalVerts[vertIndex] = vertKey
-                            vertDict[vertKey] = vertIndex
-                            fw('%d' % vertIndex)
-                        else:
-                            fw('%d' % vertDict[vertKey])
-
-                    face_vert_index += len(f_v)
-                    fw(']')
-            fw('],\n')
-            fw('points = [')
-            for vertKey, vi in enumerate(globalVerts):
-              if vi != 0:
-                fw(',')
-              fw('[%f,%f,%f]' % globalVerts[vi])
-            fw(']\n')
-            fw(');\n')
-
-            # Make the indices global rather then per mesh
-            totverts += len(me_verts)
-
-            # clean up
-            bpy.data.meshes.remove(me)
-
-        if ob_main.dupli_type != 'NONE':
-            ob_main.dupli_list_clear()
-
-    file.close()
-
-    # copy all collected files.
-    bpy_extras.io_utils.path_reference_copy(copy_set)
-
-    print("OpenSCAD Export time: %.2f" % (time.time() - time1))
-
+  # if an object has geometry, export them
+  if (len(mesh.polygons) + len(mesh.vertices)):
+    # drop our geometry
+    fw("\n\n// this is the geometry for %s (sorry, not human editable)\n" % object.data.name)
+    fw("%s_triangles = [\n" % object.data.name)
+    for index, face in enumerate(mesh.polygons):
+      face_verts = face.vertices
+      if index != 0:
+          fw(',')
+      # fan triangulate
+      for i in range(2, len(face_verts), 1):
+        if i>2:
+          fw(",")
+        fw("[%d,%d,%d]" % (face_verts[i],face_verts[i-1],face_verts[0]))
+    fw("];\n")
+    # drop our vert positions
+    fw("%s_points = [\n" % object.data.name)
+    for vertex in mesh.vertices:
+      if vertex.index != 0:
+        fw(",")
+      fw("[%f,%f,%f]" % (vertex.co.x,vertex.co.y,vertex.co.z))
+    fw("];")
+    # define our module
+    fw("module %s() {\n" % object.data.name)
+    fw("  polyhedron(triangles = %s_triangles, points = %s_points);\n" % (object.data.name, object.data.name))
+    fw("};\n")
+  else:
+    print("ERROR: tried to export a mesh without sufficient verts!")
 
 def _write(context, filepath,
-              EXPORT_APPLY_MODIFIERS,  # ok
-              ):  # Not used
+              EXPORT_APPLY_MODIFIERS,
+              ):
 
-    print("saving to file: %s" % filepath)
+  time1 = time.time() # profile how long we take
+  print("saving to file: %s" % filepath)
+  file = open(filepath, "w", encoding="utf8", newline="\n")
+  filename_prefix=re.sub(
+      '[\. ]','_'
+      ,os.path.splitext( os.path.basename( file.name ) )[0]
+      )
+  fw = file.write
+  fw("""//
+//  Usage:
+//
+//    To reference this file in another OpenSCAD file
+//      use <"""+filename_prefix+""".scad>;
+""")
 
-    scene = context.scene
-    # Exit edit mode before exporting, so current object states are exported properly.
-    if bpy.ops.object.mode_set.poll():
-        bpy.ops.object.mode_set(mode='OBJECT')
+  scene = context.scene
+  # Exit edit mode before exporting, so current object states are exported properly.
+  if bpy.ops.object.mode_set.poll():
+    bpy.ops.object.mode_set(mode='OBJECT')
+  for object in context.selected_objects:
+    if object.type == 'MESH' and object.data.shape_keys:
+      write_shapekey_commments(fw, object)
+    else:
+      if object.type=='MESH':
+        write_object_commments(fw, object)
 
-    frame = scene.frame_current
-    object = context.active_object
-    objects = context.selected_objects
+  for object in context.selected_objects:
 
     # EXPORT THE SHAPES.
-    write_shapes_file(filepath, object, scene,
-               EXPORT_APPLY_MODIFIERS,
+    if object.type == 'MESH' and object.data.shape_keys:
+      write_shapekeys(fw, object,
                )
-               
-# EXPORT THE FILE.
-#     write_file(filepath, objects, scene,
-#                EXPORT_APPLY_MODIFIERS,
-#                )
+    else:
+      if object.type=='MESH':
+        write_object(fw, object, object.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW'),
+               )
 
+  # we're done here
+  file.close()
+  print("OpenSCAD Export time: %.2f" % (time.time() - time1))
+ 
 def save(operator, context, filepath="",
-         apply_modifiers=True
+         apply_modifiers=True,
          ):
 
-    _write(context, filepath,
-           EXPORT_APPLY_MODIFIERS=apply_modifiers,
-           )
+  _write(context, filepath,
+         EXPORT_APPLY_MODIFIERS=apply_modifiers,
+         )
 
-    return {'FINISHED'}
+  return {'FINISHED'}
