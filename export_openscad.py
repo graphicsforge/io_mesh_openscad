@@ -19,7 +19,6 @@
 # <pep8 compliant>
 
 import os
-import re
 import time
 
 import bpy
@@ -34,10 +33,10 @@ def name_compat(name):
         return name.replace(' ', '_')
 
 
-def write_file(filepath, objects, scene,
-               EXPORT_APPLY_MODIFIERS=True,
-               EXPORT_PATH_MODE='AUTO',
-               ):
+def write_shapes_file(  filepath, object, scene,
+                EXPORT_APPLY_MODIFIERS=True,
+                EXPORT_PATH_MODE='AUTO',
+                ):
     """
     Basic write function. The context and options must be already set
     """
@@ -48,89 +47,203 @@ def write_file(filepath, objects, scene,
     time1 = time.time()
 
     file = open(filepath, "w", encoding="utf8", newline="\n")
-    filename_prefix=re.sub(
-        '[\. ]','_'
-        ,os.path.splitext( os.path.basename( file.name ) )[0]
-        )
     fw = file.write
 
+    # Initialize totals, these are updated each object
+    totverts = totuvco = totno = 1
+    vertIndex = -1
 
-    fw("""// Exported from Blender to """+file.name+"""
-//
-//  Usage:
-//
-//    To reference this file in another OpenSCAD file, use the 'use' syntax instead of 'include' 
-//    so the test structures aren't evaluated:
-//      use <"""+file.name+""">;
-""")
-    fw('\necho("Export from Blender to '+file.name+'");\n')
-    fw('render_part="polyhedron";\n')
-    fw('// render_part="frame";\n')
-    fw('// render_part="shell";\n')
-    fw('// render_part="shell_with_diff";\n')
-    fw('\n')
+    face_vert_index = 1
 
-    # Print header information at top of file.
-    for ob_main in objects:
-
-        # ignore dupli children
-        if ob_main.parent and ob_main.parent.dupli_type in {'VERTS', 'FACES'}:
-            continue
-
-        obs = []
-        if ob_main.dupli_type != 'NONE':
-            ob_main.dupli_list_create(scene)
-            obs = [(dob.object, dob.matrix) for dob in ob_main.dupli_list]
-        else:
-            obs = [(ob_main, ob_main.matrix_world)]
-
-        object_prefix=filename_prefix+"_"+re.sub(
-            '[\. ]','_'
-            ,ob_main.name
-            )
-        for ob, ob_mat in obs:
-            try:
-                me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
-            except RuntimeError:
-                me = None
-            if me is None:
-                continue
-
-            fw("""//
-//    Triangles function:
-//      """+object_prefix+"""_triangles()
-//    Points function:
-//      """+object_prefix+"""_points()
-//    Multmatrix function:
-//      """+object_prefix+"""_multmatrix()
-//    Polyhedron module:
-//      """+object_prefix+"""(type="polyhedron");
-//    Frame module:
-//      """+object_prefix+"""(type="frame",frame_th=0.1);
-//    Shell module:
-//      """+object_prefix+"""(type="shell",shell_th=0.1);
-""")
-
-    fw("""//
-//  Note 1: Switch to "View - Thrown Together (F12)" and look for purple-showing facets to debug incomplete mesh polyhedron issues.
-//  Note 2: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
-//    try using the "frame" or "shell" variants.
-""")
+    globalVerts = {}
+    vertDict = {}
 
     copy_set = set()
+
+
+    if object.type == 'MESH' and object.data.shape_keys:
+    
+        mesh = object.data
+        mesh_verts = mesh.vertices[:]
+        mesh_face_index = [(index, face) for index, face in enumerate(mesh.polygons)]
+        mesh_shape_index = [(index, keyblock) for index, keyblock in enumerate(mesh.shape_keys.key_blocks)]
+        
+        if (len(mesh_face_index) + len(mesh_verts)):
+            
+            
+            fw('%s' % mesh.name)
+            fw('_dimensions = ')
+            fw('[%f,%f,%f];\n\n' % (object.dimensions[0],object.dimensions[1],object.dimensions[2]))
+            
+            #this adds the slider control variables for the shapes in customizer
+            for index, keyblock in mesh_shape_index:
+            	if keyblock.name == mesh.shape_keys.reference_key.name:
+            		continue
+            	else:
+                	fw('%s' % keyblock.name)
+                	fw('_value = 0; //[0:100]\n\n')
+            
+              #uncomment to include original mesh vert positions (shouldn't be needed since basis shapekey will have this info)
+#             fw('%s' % mesh.name)
+#             fw('_original_points = [[')
+#             print(mesh_verts)
+#             for vertex in mesh_verts:
+#                 if vertex.index != 0:
+#                     fw(',')
+#                 fw('%f,%f,%f]' % (vertex.co.x,vertex.co.y,vertex.co.z))
+#             fw('];')
+
+            fw('polyhedron(triangles = ')
+            fw('%s' % mesh.name)
+            fw('_triangles, points = ')
+            fw('%s' % mesh.name)
+            fw('_shapes_points);\n\n')
+            
+
+
+            fw('%s' % mesh.name)
+            fw('_triangles = [')            
+            for index, face in mesh_face_index:
+                face_verts = face.vertices
+                if index != 0:
+                    fw(',')
+                if len(face_verts) == 3:
+                    fw('[%d,%d,%d]' % (face_verts[2], face_verts[1], face_verts[0]))
+                else:
+                    fw('[%d,%d,%d],[%d,%d,%d]' % (face_verts[2],face_verts[1],face_verts[0],face_verts[3],face_verts[2],face_verts[0]))
+            fw('];\n\n')
+            
+            for index, keyblock in mesh_shape_index:
+                shape_verts_index = [(index, shape_vertex) for index, shape_vertex in enumerate(keyblock.data)]
+                fw('%s' % mesh.name)
+                fw('_')
+                fw('%s' % keyblock.name)
+                fw('_points = [')
+                for index, vertex in shape_verts_index:
+                    if index != 0:
+                        fw(',')
+                    fw('[%f,%f,%f]' % (vertex.co.x,vertex.co.y,vertex.co.z))
+                fw('];\n\n')
+            
+
+
+            fw('%s' % mesh.name)
+            fw('_shapes_points = [')
+            for vertex in mesh_verts:
+                if vertex.index != 0:
+                    fw(',')
+                fw('[')
+                for com_index, component in enumerate(vertex.co):
+                    if com_index != 0:
+                        fw(',')
+                    for key_index, keyblock in mesh_shape_index:
+                        if key_index != 0:
+                            fw('+')
+                        if keyblock.name == mesh.shape_keys.reference_key.name:
+                            fw('%s' % mesh.name)
+                            fw('_')
+                            fw('%s' % keyblock.name)
+                            fw('_points[')
+                            fw('%d]' % vertex.index)
+                            fw('[%d]' % com_index)
+                        else:
+                            fw('((')
+                            fw('%s' % mesh.name)
+                            fw('_')
+                            fw('%s' % keyblock.name)
+                            fw('_points[')
+                            fw('%d]' % vertex.index)
+                            fw('[%d]-' % com_index)
+                            fw('%s' % mesh.name)
+                            fw('_')
+                            fw('%s' % keyblock.relative_key.name)
+                            fw('_points[')
+                            fw('%d]' % vertex.index)
+                            fw('[%d])*' % com_index)
+                            fw('%s' % keyblock.name)
+                            fw('_value/100)')
+                fw(']')
+            fw('];')
+                            
+            
+#           fw('polyhedron(\n')
+#           fw('triangles=[')
+#           for f, f_index in face_index_pairs:
+#               f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
+#       
+#               # openscad has flipped winding and doesn't handle quads
+#               if len(f_v_orig) == 3:
+#                   f_v_iter = (f_v_orig[2], f_v_orig[1], f_v_orig[0]),
+#               else:
+#                   f_v_iter = (f_v_orig[2], f_v_orig[1], f_v_orig[0]), (f_v_orig[3], f_v_orig[2], f_v_orig[0])
+#       
+#               # support for triangulation
+#               for f_v in f_v_iter:
+#                   if len(globalVerts) != 0:
+#                       fw(', ')
+#                   fw('[')
+#                   vertexIndex = 0
+#                   for vi, v in f_v:
+#                       if vertexIndex != 0:
+#                           fw(',')
+#                       vertexIndex += 1
+#                       vertKey = veckey3d(v.co)
+#                       if vertKey not in vertDict:
+#                           vertIndex += 1
+#                           globalVerts[vertIndex] = vertKey
+#                           vertDict[vertKey] = vertIndex
+#                           fw('%d' % vertIndex)
+#                       else:
+#                           fw('%d' % vertDict[vertKey])
+#       
+#                   face_vert_index += len(f_v)
+#                   fw(']')
+#           fw('],\n')
+#           fw('points = [')
+#           for vertKey, vi in enumerate(globalVerts):
+#             if vi != 0:
+#               fw(',')
+#             fw('[%f,%f,%f]' % globalVerts[vi])
+#           fw(']\n')
+#           fw(');\n')
+
+    file.close()
+
+    # copy all collected files.
+    bpy_extras.io_utils.path_reference_copy(copy_set)
+
+    print("OpenSCAD Export time: %.2f" % (time.time() - time1))
+
+def write_file( filepath, objects, scene,
+                EXPORT_APPLY_MODIFIERS=True,
+                EXPORT_PATH_MODE='AUTO',
+                ):
+    """
+    Basic write function. The context and options must be already set
+    """
+
+    def veckey3d(v):
+        return round(v.x, 6), round(v.y, 6), round(v.z, 6)
+
+    time1 = time.time()
+
+    file = open(filepath, "w", encoding="utf8", newline="\n")
+    fw = file.write
+
+    # Initialize totals, these are updated each object
     totverts = totuvco = totno = 1
+    vertIndex = -1
+
+    face_vert_index = 1
+
+    globalVerts = {}
+    vertDict = {}
+
+    copy_set = set()
 
     # Get all meshes
     for ob_main in objects:
 
-        # Initialize totals, these are updated each object
-        vertIndex = -1
-
-        face_vert_index = 1
-
-        globalVerts = {}
-        vertDict = {}
-
         # ignore dupli children
         if ob_main.parent and ob_main.parent.dupli_type in {'VERTS', 'FACES'}:
             continue
@@ -142,10 +255,6 @@ def write_file(filepath, objects, scene,
         else:
             obs = [(ob_main, ob_main.matrix_world)]
 
-        object_prefix=filename_prefix+"_"+re.sub(
-            '[\. ]','_'
-            ,ob_main.name
-            )
         for ob, ob_mat in obs:
             try:
                 me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
@@ -165,69 +274,8 @@ def write_file(filepath, objects, scene,
                 bpy.data.meshes.remove(me)
                 continue  # dont bother with this mesh.
 
-            fw('\n')
-            fw('echo("   Triangles function: '+object_prefix+'_triangles()");\n')
-            fw('echo("      Points function: '+object_prefix+'_points()");\n')
-            fw('echo("  Multmatrix function: '+object_prefix+'_multmatrix()");\n')
-            fw('if(render_part=="polyhedron") {\n')
-            fw('  echo("Rendering '+object_prefix+'(type=\\"polyhedron\\")...");\n')
-            fw('    multmatrix('+object_prefix+'_multmatrix()) '+object_prefix+'(type="polyhedron");\n')
-            fw('}\n')
-            fw('if(render_part=="frame") {\n')
-            fw('  echo("Rendering '+object_prefix+'(type=\\"frame\\",frame_th=0.1)...");\n')
-            fw('    '+object_prefix+'(type="frame",frame_th=0.1);\n')
-            fw('}\n')
-            fw('if(render_part=="shell") {\n')
-            fw('  echo("Rendering '+object_prefix+'(type=\\"shell\\",shell_th=0.1)...");\n')
-            fw('    '+object_prefix+'(type="shell",shell_th=0.1);\n')
-            fw('}\n')
-            fw('if(render_part=="shell_with_diff") {\n')
-            fw('  echo("Rendering '+object_prefix+'(type=\\"shell\\",shell_th=0.1) differenced with cube(100,center=false)...");\n')
-            fw('  difference() {\n')
-            fw('    '+object_prefix+'(type="shell",shell_th=0.1);\n')
-            fw('    cube(100,center=false);\n')
-            fw('  }\n')
-            fw('}\n')
-            fw('\nmodule '+object_prefix+'(type="polyhedron"\n')
-            fw('    , frame_th=0.1\n')
-            fw('    , shell_th=0.1\n')
-            fw('    ) {\n')
-            fw('    if(type=="polyhedron") {\n')
-            fw('        polyhedron(\n')
-            fw('            triangles='+object_prefix+'_triangles()\n')
-            fw('            , points='+object_prefix+'_points()\n')
-            fw('        );\n')
-            fw('    } else if(type=="frame") {\n')
-            fw('        for(i=[0:len('+object_prefix+'_triangles())-1]) assign(triangle='+object_prefix+'_triangles()[i]) {\n')
-            fw('            for(j=[0:2]) {\n')
-            fw('                hull() {\n')
-            fw('                    translate('+object_prefix+'_points()[triangle[j%3]]) sphere($fn=4,r=frame_th/2);\n')
-            fw('                    translate('+object_prefix+'_points()[triangle[(j+1)%3]]) sphere($fn=4,r=frame_th/2);\n')
-            fw('                }\n')
-            fw('            }\n')
-            fw('        }\n')
-            fw('    } else if(type=="shell") {\n')
-            fw('        for(i=[0:len('+object_prefix+'_triangles())-1]) assign(triangle='+object_prefix+'_triangles()[i]) {\n')
-            fw('            hull() {\n')
-            fw('                translate('+object_prefix+'_points()[triangle[0]]) sphere($fn=4,r=shell_th/2);\n')
-            fw('                translate('+object_prefix+'_points()[triangle[1]]) sphere($fn=4,r=shell_th/2);\n')
-            fw('                translate('+object_prefix+'_points()[triangle[2]]) sphere($fn=4,r=shell_th/2);\n')
-            fw('            }\n')
-            fw('        }\n')
-            fw('    }\n')
-            fw('}\n')
-            fw('\nfunction '+object_prefix+'_multmatrix()=[')
-            for r_i in range(4):
-                if r_i != 0:
-                    fw(',')
-                fw('[')
-                for c_j in range(4):
-                    if c_j != 0:
-                        fw(',')
-                    fw('%f' % ob_main.matrix_world[r_i][c_j])
-                fw(']')
-            fw('];\n')
-            fw('\nfunction '+object_prefix+'_triangles()=[')
+            fw('polyhedron(\n')
+            fw('triangles=[')
             for f, f_index in face_index_pairs:
                 f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
 
@@ -258,13 +306,14 @@ def write_file(filepath, objects, scene,
 
                     face_vert_index += len(f_v)
                     fw(']')
-            fw('];\n')
-            fw('function '+object_prefix+'_points() = [')
+            fw('],\n')
+            fw('points = [')
             for vertKey, vi in enumerate(globalVerts):
               if vi != 0:
                 fw(',')
               fw('[%f,%f,%f]' % globalVerts[vi])
-            fw('];\n')
+            fw(']\n')
+            fw(');\n')
 
             # Make the indices global rather then per mesh
             totverts += len(me_verts)
@@ -295,12 +344,18 @@ def _write(context, filepath,
         bpy.ops.object.mode_set(mode='OBJECT')
 
     frame = scene.frame_current
+    object = context.active_object
     objects = context.selected_objects
 
-    # EXPORT THE FILE.
-    write_file(filepath, objects, scene,
+    # EXPORT THE SHAPES.
+    write_shapes_file(filepath, object, scene,
                EXPORT_APPLY_MODIFIERS,
                )
+               
+# EXPORT THE FILE.
+#     write_file(filepath, objects, scene,
+#                EXPORT_APPLY_MODIFIERS,
+#                )
 
 def save(operator, context, filepath="",
          apply_modifiers=True
