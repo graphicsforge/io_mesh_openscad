@@ -26,14 +26,19 @@ import bpy
 import mathutils
 import bpy_extras.io_utils
 
+def getName( object ):
+  return re.sub( '[\. ]','_', object.data.name )
+
 # dump some stuff we might want later in openscad
-def write_info( fw, object ):
-  fw("// set info variables for %s\n" % object.data.name)
-  fw("%s_dims = [%.2f,%.2f,%.2f];\n" % (object.data.name,object.dimensions[0],object.dimensions[1],object.dimensions[2]))
-  fw("%s_num_verts = %d;\n" % (object.data.name,len(object.data.vertices)))
+def write_utils( fw, object ):
+  objectName = getName(object)
+  fw("function %s_dimX() = %.2f;\n" % (objectName, object.dimensions[0]))
+  fw("function %s_dimY() = %.2f;\n" % (objectName, object.dimensions[1]))
+  fw("function %s_dimZ() = %.2f;\n" % (objectName, object.dimensions[2]))
 
 # output our comments about shapekey objects
 def write_shapekey_commments( fw, object ):
+  objectName = getName(object)
   mesh = object.data
   if (len(mesh.polygons) + len(mesh.vertices)):
     # grab our shapekeys, excluding our reference
@@ -44,35 +49,40 @@ def write_shapekey_commments( fw, object ):
       else:
         nonRefShapeKeys[len(nonRefShapeKeys)] = keyblock
 
-    # say what we're going to do
-    fw("\n//exports module %s(" % mesh.name)
+    # drop our info
+    fw("\n/////////////////////\n")
+    fw("// MODULE %s\n" % objectName)
+    fw("/////////////////////\n")
+    fw("// Control Variables\n")
+    for i, key in enumerate(nonRefShapeKeys):
+      fw("%s_factor = %d; // [%d, %d]\n" % (nonRefShapeKeys[i].name, nonRefShapeKeys[i].value*100, nonRefShapeKeys[i].slider_min*100, nonRefShapeKeys[i].slider_max*100))
+    fw("\n// Examples/Tests\n")
+    fw("%s(" % objectName)
     for i, key in enumerate(nonRefShapeKeys):
       if i!=0:
-        fw(",\n//\t\t\t")
-      fw("%s_value = 0" % nonRefShapeKeys[i].name)
-    fw(")\n")
-
-    # draw the mesh with default key values
-    fw("//draw geometry like this\n%s();\n" % mesh.name)
-
-    # drop info variables
-    write_info( fw, object )
+        fw(", ")
+      fw("%s_factor" % nonRefShapeKeys[i].name)
+    fw(");\n")
+    fw("\n// Functions and Utilities\n")
+    write_utils( fw, object )
 
 # output our comments about objects
 def write_object_commments( fw, object ):
+  objectName = getName(object)
   mesh = object.data
   if (len(mesh.polygons) + len(mesh.vertices)):
-    # say what we're going to do
-    fw("\n//exports module %s()\n" % mesh.name)
-
-    # draw the mesh with default key values
-    fw("//draw geometry like this\n%s();\n" % mesh.name)
-
-    # drop info variables
-    write_info( fw, object )
+    # drop our info
+    fw("\n/////////////////////\n")
+    fw("// MODULE %s\n" % objectName)
+    fw("/////////////////////\n")
+    fw("\n// Examples/Tests\n")
+    fw("%s();\n" % objectName)
+    fw("\n// Functions and Utilities\n")
+    write_utils( fw, object )
 
 # output an object that has shapekeys
 def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
+  objectName = getName(object)
 
   # if an object has geometry, export them
   mesh = object.data
@@ -86,8 +96,8 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
         nonRefShapeKeys[len(nonRefShapeKeys)] = keyblock
 
     # drop our geometry
-    fw("\n\n// this is the geometry for %s (sorry, not human editable)\n" % mesh.name)
-    fw("%s_triangles = [\n" % mesh.name)
+    fw("\n/////////////////////\n// geometry for %s\n" % objectName)
+    fw("function %s_triangles() = [\n" % objectName)
     for index, face in enumerate(mesh.polygons):
       face_verts = face.vertices
       if index != 0:
@@ -100,22 +110,21 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
     fw("];\n")
     
     for index, keyblock in enumerate(mesh.shape_keys.key_blocks):
-        shape_verts_index = [(index, shape_vertex) for index, shape_vertex in enumerate(keyblock.data)]
-        fw("%s_%s_points=[\n" % (mesh.name, keyblock.name))
-        for index, vertex in shape_verts_index:
+        fw("function %s_%s_points() = [\n" % (objectName, keyblock.name))
+        for index, vertex in enumerate(keyblock.data):
             if index != 0:
                 fw(",")
             fw("[%f,%f,%f]" % (vertex.co.x,vertex.co.y,vertex.co.z))
         fw("];\n")
 
-    fw("module %s(" % mesh.name)
+    fw("module %s(" % objectName)
     for i, key in enumerate(nonRefShapeKeys):
       if i!=0:
         fw(", ")
-      fw("%s_value = 0" % nonRefShapeKeys[i].name)
+      fw("%s_factor = %f" % (nonRefShapeKeys[i].name, nonRefShapeKeys[i].value*100))
     fw(") {\n")
 
-    fw("  %s_shapes_points = [\n" % mesh.name)
+    fw("  %s_shapes_points = [\n" % objectName)
     for vertex in mesh.vertices:
       if vertex.index != 0:
         fw(",")
@@ -128,15 +137,14 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
           if key_index != 0:
             fw("+")
           if keyblock.name == mesh.shape_keys.reference_key.name:
-            fw("%s_%s_points[%d][%d]" % (mesh.name, keyblock.name, vertex.index, com_index))
+            fw("%f" % (keyblock.data[vertex.index].co[com_index]))
           else:
             # linearly interpolate between key and base
-            fw("((%s_%s_points[%d][%d]-" % (mesh.name, keyblock.name, vertex.index, com_index))
-            fw("%s_%s_points[%d][%d])*" % (mesh.name, keyblock.relative_key.name, vertex.index, com_index))
-            fw("%s_value/100)" % keyblock.name)
+            fw("((%f-%f)" % (keyblock.data[vertex.index].co[com_index], keyblock.relative_key.data[vertex.index].co[com_index]))
+            fw("*%s_factor/100)" % keyblock.name)
       fw("]")
     fw("];")
-    fw("  polyhedron(triangles = %s_triangles, points = %s_shapes_points);\n" % (mesh.name, mesh.name))
+    fw("  polyhedron(triangles = %s_triangles(), points = %s_shapes_points);\n" % (objectName, objectName))
     fw("};\n")
 
   else:
@@ -144,12 +152,13 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
 
 # output an object
 def write_object( fw, object, mesh ):
+  objectName = getName(object)
 
   # if an object has geometry, export them
   if (len(mesh.polygons) + len(mesh.vertices)):
     # drop our geometry
-    fw("\n\n// this is the geometry for %s (sorry, not human editable)\n" % object.data.name)
-    fw("%s_triangles = [\n" % object.data.name)
+    fw("\n/////////////////////\n// geometry for %s\n" % objectName)
+    fw("function %s_triangles() = [\n" % objectName)
     for index, face in enumerate(mesh.polygons):
       face_verts = face.vertices
       if index != 0:
@@ -161,15 +170,15 @@ def write_object( fw, object, mesh ):
         fw("[%d,%d,%d]" % (face_verts[i],face_verts[i-1],face_verts[0]))
     fw("];\n")
     # drop our vert positions
-    fw("%s_points = [\n" % object.data.name)
+    fw("function %s_points() = [\n" % objectName)
     for vertex in mesh.vertices:
       if vertex.index != 0:
         fw(",")
       fw("[%f,%f,%f]" % (vertex.co.x,vertex.co.y,vertex.co.z))
     fw("];")
     # define our module
-    fw("module %s() {\n" % object.data.name)
-    fw("  polyhedron(triangles = %s_triangles, points = %s_points);\n" % (object.data.name, object.data.name))
+    fw("module %s() {\n" % objectName)
+    fw("  polyhedron(triangles = %s_triangles(), points = %s_points());\n" % (objectName, objectName))
     fw("};\n")
   else:
     print("ERROR: tried to export a mesh without sufficient verts!")
