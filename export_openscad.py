@@ -19,6 +19,7 @@
 # <pep8 compliant>
 
 import os
+import re
 import time
 
 import bpy
@@ -47,20 +48,29 @@ def write_file(filepath, objects, scene,
     time1 = time.time()
 
     file = open(filepath, "w", encoding="utf8", newline="\n")
+    filename_prefix=re.sub(
+        '[\. ]','_'
+        ,os.path.splitext( os.path.basename( file.name ) )[0]
+        )
     fw = file.write
 
-    # Initialize totals, these are updated each object
-    totverts = totuvco = totno = 1
-    vertIndex = -1
 
-    face_vert_index = 1
+    fw("""// Exported from Blender to """+file.name+"""
+//
+//  Usage:
+//
+//    To reference this file in another OpenSCAD file, use the 'use' syntax instead of 'include' 
+//    so the test structures aren't evaluated:
+//      use <"""+file.name+""">;
+""")
+    fw('\necho("Export from Blender to '+file.name+'");\n')
+    fw('render_part="polyhedron";\n')
+    fw('// render_part="frame";\n')
+    fw('// render_part="shell";\n')
+    fw('// render_part="shell_with_diff";\n')
+    fw('\n')
 
-    globalVerts = {}
-    vertDict = {}
-
-    copy_set = set()
-
-    # Get all meshes
+    # Print header information at top of file.
     for ob_main in objects:
 
         # ignore dupli children
@@ -74,6 +84,68 @@ def write_file(filepath, objects, scene,
         else:
             obs = [(ob_main, ob_main.matrix_world)]
 
+        object_prefix=filename_prefix+"_"+re.sub(
+            '[\. ]','_'
+            ,ob_main.name
+            )
+        for ob, ob_mat in obs:
+            try:
+                me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
+            except RuntimeError:
+                me = None
+            if me is None:
+                continue
+
+            fw("""//
+//    Triangles function:
+//      """+object_prefix+"""_triangles()
+//    Points function:
+//      """+object_prefix+"""_points()
+//    Multmatrix function:
+//      """+object_prefix+"""_multmatrix()
+//    Polyhedron module:
+//      """+object_prefix+"""(type="polyhedron");
+//    Frame module:
+//      """+object_prefix+"""(type="frame",frame_th=0.1);
+//    Shell module:
+//      """+object_prefix+"""(type="shell",shell_th=0.1);
+""")
+
+    fw("""//
+//  Note 1: Switch to "View - Thrown Together (F12)" and look for purple-showing facets to debug incomplete mesh polyhedron issues.
+//  Note 2: If your mesh is non-manifold and/or OpenSCAD complains about the simple "polyhedron" variation,
+//    try using the "frame" or "shell" variants.
+""")
+
+    copy_set = set()
+    totverts = totuvco = totno = 1
+
+    # Get all meshes
+    for ob_main in objects:
+
+        # Initialize totals, these are updated each object
+        vertIndex = -1
+
+        face_vert_index = 1
+
+        globalVerts = {}
+        vertDict = {}
+
+        # ignore dupli children
+        if ob_main.parent and ob_main.parent.dupli_type in {'VERTS', 'FACES'}:
+            continue
+
+        obs = []
+        if ob_main.dupli_type != 'NONE':
+            ob_main.dupli_list_create(scene)
+            obs = [(dob.object, dob.matrix) for dob in ob_main.dupli_list]
+        else:
+            obs = [(ob_main, ob_main.matrix_world)]
+
+        object_prefix=filename_prefix+"_"+re.sub(
+            '[\. ]','_'
+            ,ob_main.name
+            )
         for ob, ob_mat in obs:
             try:
                 me = ob.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW')
@@ -93,8 +165,69 @@ def write_file(filepath, objects, scene,
                 bpy.data.meshes.remove(me)
                 continue  # dont bother with this mesh.
 
-            fw('polyhedron(\n')
-            fw('triangles=[')
+            fw('\n')
+            fw('echo("   Triangles function: '+object_prefix+'_triangles()");\n')
+            fw('echo("      Points function: '+object_prefix+'_points()");\n')
+            fw('echo("  Multmatrix function: '+object_prefix+'_multmatrix()");\n')
+            fw('if(render_part=="polyhedron") {\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"polyhedron\\")...");\n')
+            fw('    multmatrix('+object_prefix+'_multmatrix()) '+object_prefix+'(type="polyhedron");\n')
+            fw('}\n')
+            fw('if(render_part=="frame") {\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"frame\\",frame_th=0.1)...");\n')
+            fw('    '+object_prefix+'(type="frame",frame_th=0.1);\n')
+            fw('}\n')
+            fw('if(render_part=="shell") {\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"shell\\",shell_th=0.1)...");\n')
+            fw('    '+object_prefix+'(type="shell",shell_th=0.1);\n')
+            fw('}\n')
+            fw('if(render_part=="shell_with_diff") {\n')
+            fw('  echo("Rendering '+object_prefix+'(type=\\"shell\\",shell_th=0.1) differenced with cube(100,center=false)...");\n')
+            fw('  difference() {\n')
+            fw('    '+object_prefix+'(type="shell",shell_th=0.1);\n')
+            fw('    cube(100,center=false);\n')
+            fw('  }\n')
+            fw('}\n')
+            fw('\nmodule '+object_prefix+'(type="polyhedron"\n')
+            fw('    , frame_th=0.1\n')
+            fw('    , shell_th=0.1\n')
+            fw('    ) {\n')
+            fw('    if(type=="polyhedron") {\n')
+            fw('        polyhedron(\n')
+            fw('            triangles='+object_prefix+'_triangles()\n')
+            fw('            , points='+object_prefix+'_points()\n')
+            fw('        );\n')
+            fw('    } else if(type=="frame") {\n')
+            fw('        for(i=[0:len('+object_prefix+'_triangles())-1]) assign(triangle='+object_prefix+'_triangles()[i]) {\n')
+            fw('            for(j=[0:2]) {\n')
+            fw('                hull() {\n')
+            fw('                    translate('+object_prefix+'_points()[triangle[j%3]]) sphere($fn=4,r=frame_th/2);\n')
+            fw('                    translate('+object_prefix+'_points()[triangle[(j+1)%3]]) sphere($fn=4,r=frame_th/2);\n')
+            fw('                }\n')
+            fw('            }\n')
+            fw('        }\n')
+            fw('    } else if(type=="shell") {\n')
+            fw('        for(i=[0:len('+object_prefix+'_triangles())-1]) assign(triangle='+object_prefix+'_triangles()[i]) {\n')
+            fw('            hull() {\n')
+            fw('                translate('+object_prefix+'_points()[triangle[0]]) sphere($fn=4,r=shell_th/2);\n')
+            fw('                translate('+object_prefix+'_points()[triangle[1]]) sphere($fn=4,r=shell_th/2);\n')
+            fw('                translate('+object_prefix+'_points()[triangle[2]]) sphere($fn=4,r=shell_th/2);\n')
+            fw('            }\n')
+            fw('        }\n')
+            fw('    }\n')
+            fw('}\n')
+            fw('\nfunction '+object_prefix+'_multmatrix()=[')
+            for r_i in range(4):
+                if r_i != 0:
+                    fw(',')
+                fw('[')
+                for c_j in range(4):
+                    if c_j != 0:
+                        fw(',')
+                    fw('%f' % ob_main.matrix_world[r_i][c_j])
+                fw(']')
+            fw('];\n')
+            fw('\nfunction '+object_prefix+'_triangles()=[')
             for f, f_index in face_index_pairs:
                 f_v_orig = [(vi, me_verts[v_idx]) for vi, v_idx in enumerate(f.vertices)]
 
@@ -125,14 +258,13 @@ def write_file(filepath, objects, scene,
 
                     face_vert_index += len(f_v)
                     fw(']')
-            fw('],\n')
-            fw('points = [')
+            fw('];\n')
+            fw('function '+object_prefix+'_points() = [')
             for vertKey, vi in enumerate(globalVerts):
               if vi != 0:
                 fw(',')
               fw('[%f,%f,%f]' % globalVerts[vi])
-            fw(']\n')
-            fw(');\n')
+            fw('];\n')
 
             # Make the indices global rather then per mesh
             totverts += len(me_verts)
