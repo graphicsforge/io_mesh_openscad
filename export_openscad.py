@@ -27,7 +27,7 @@ import mathutils
 import bpy_extras.io_utils
 
 def getName( object ):
-  return re.sub( '[\. ]','_', object.data.name )
+  return re.sub( '[^a-zA-Z0-9_]+', '', re.sub( '[\. ]','_', object.data.name ))
 
 # dump some stuff we might want later in openscad
 def write_utils( fw, object ):
