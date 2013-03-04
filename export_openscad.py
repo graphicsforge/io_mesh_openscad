@@ -108,14 +108,6 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
           fw(",")
         fw("[%d,%d,%d]" % (face_verts[i],face_verts[i-1],face_verts[0]))
     fw("];\n")
-    
-    for index, keyblock in enumerate(mesh.shape_keys.key_blocks):
-        fw("function %s_%s_points() = [\n" % (objectName, keyblock.name))
-        for index, vertex in enumerate(keyblock.data):
-            if index != 0:
-                fw(",")
-            fw("[%f,%f,%f]" % (vertex.co.x,vertex.co.y,vertex.co.z))
-        fw("];\n")
 
     fw("module %s(" % objectName)
     for i, key in enumerate(nonRefShapeKeys):
@@ -134,17 +126,17 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
           fw(",")
         for key_index, keyblock in enumerate(mesh.shape_keys.key_blocks):
           # combine the effect of each shapekey
-          if key_index != 0:
-            fw("+")
+          keyvalue = keyblock.data[vertex.index].co[com_index]
+          basevalue = keyblock.relative_key.data[vertex.index].co[com_index]
           if keyblock.name == mesh.shape_keys.reference_key.name:
             fw("%f" % (keyblock.data[vertex.index].co[com_index]))
-          else:
+          elif keyvalue!=basevalue:
             # linearly interpolate between key and base
-            fw("((%f-%f)" % (keyblock.data[vertex.index].co[com_index], keyblock.relative_key.data[vertex.index].co[com_index]))
+            fw("+((%f-%f)" % (keyvalue, basevalue))
             fw("*%s_factor/100)" % keyblock.name)
       fw("]")
     fw("];")
-    fw("  polyhedron(triangles = %s_triangles(), points = %s_shapes_points);\n" % (objectName, objectName))
+    fw("  polyhedron(triangles = %s_triangles(), points = %s_shapes_points, convexity=10);\n" % (objectName, objectName))
     fw("};\n")
 
   else:
@@ -178,7 +170,7 @@ def write_object( fw, object, mesh ):
     fw("];")
     # define our module
     fw("module %s() {\n" % objectName)
-    fw("  polyhedron(triangles = %s_triangles(), points = %s_points());\n" % (objectName, objectName))
+    fw("  polyhedron(triangles = %s_triangles(), points = %s_points(), convexity=10);\n" % (objectName, objectName))
     fw("};\n")
   else:
     print("ERROR: tried to export a mesh without sufficient verts!")
