@@ -35,6 +35,17 @@ def write_utils( fw, object ):
     fw("function %s_dimX() = %.2f;\n" % (objectName, object.dimensions[0]))
     fw("function %s_dimY() = %.2f;\n" % (objectName, object.dimensions[1]))
     fw("function %s_dimZ() = %.2f;\n" % (objectName, object.dimensions[2]))
+    fw("function %s_multmatrix() = [" % (objectName))
+    for r_i in range(4):
+      if r_i != 0:
+          fw(',')
+      fw('[')
+      for c_j in range(4):
+          if c_j != 0:
+              fw(',')
+          fw('%f' % object.matrix_world[r_i][c_j])
+      fw(']')
+    fw('];\n')
 
 # output our comments about shapekey objects
 def write_shapekey_commments( fw, object ):
@@ -109,7 +120,7 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
                 fw("[%d,%d,%d]" % (face_verts[i],face_verts[i-1],face_verts[0]))
         fw("];\n")
 
-        fw("module %s(" % objectName)
+        fw("\nmodule %s(" % objectName)
         for i, key in enumerate(nonRefShapeKeys):
             if i!=0:
                 fw(", ")
@@ -136,7 +147,7 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
                         fw("*%s_factor/100)" % keyblock.name)
             fw("]")
         fw("];")
-        fw("    polyhedron(triangles = %s_triangles(), points = %s_shapes_points, convexity=10);\n" % (objectName, objectName))
+        fw("    multmatrix(%s_multmatrix()) polyhedron(triangles = %s_triangles(), points = %s_shapes_points, convexity=10);\n" % (objectName, objectName, objectName))
         fw("};\n")
 
     else:
@@ -204,7 +215,7 @@ def write_mesh( fw, object, mesh ):
         fw("];")
         # define our module
         fw("module %s() {\n" % objectName)
-        fw("    polyhedron(triangles = %s_triangles(), points = %s_points(), convexity=10);\n" % (objectName, objectName))
+        fw("    multmatrix(%s_multmatrix()) polyhedron(triangles = %s_triangles(), points = %s_points(), convexity=10);\n" % (objectName, objectName, objectName))
         fw("};\n")
     else:
         print("ERROR: tried to export a mesh without sufficient verts!")
