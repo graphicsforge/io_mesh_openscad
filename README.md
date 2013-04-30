@@ -10,6 +10,10 @@ OpenSCAD is http://www.openscad.org/
 
 Version History
 ================
+v0.3
+ - exports curves as polygons instead of polyhedron
+ - fixed multimatrix function after I borked it ( [clothbot](https://github.com/clothbot) )
+
 v0.2
  - make output files modular for `use` in other openscad files ( [clothbot](https://github.com/clothbot) )
  - output shapekeys ( [atartanian](https://github.com/atartanian) )

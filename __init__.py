@@ -21,7 +21,7 @@
 bl_info = {
     "name": "OpenSCAD Exporter (.scad)",
     "author": "Peter Yee (GraphicsForge)",
-    "version": (0, 2),
+    "version": (0, 3),
     "blender": (2, 6, 6),
     "location": "File > Import-Export > openscad",
     "description": "Output a mesh into an openscad file",
