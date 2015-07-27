@@ -154,8 +154,9 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
         print("ERROR: tried to export a mesh without sufficient verts!")
 
 # output an object
-def write_curve( fw, object, mesh ):
+def write_curve( fw, object):
     objectName = getName(object)
+    curve = object.data
 
     fw("\n/////////////////////\n")
     fw("// MODULE %s\n" % objectName)
@@ -164,28 +165,51 @@ def write_curve( fw, object, mesh ):
     fw("%s();\n" % objectName)
 
     # if an object has geometry, export them
-    if (len(mesh.polygons) + len(mesh.vertices)):
-        # drop our geometry
+    if (len(curve.splines)):
+        pointList = []
+        pathsList = []
+
+        splineIndex = 0
+        curIndex = 0
+
+        for spline in curve.splines:
+            splineStartIndex = curIndex
+            for point in spline.bezier_points:
+                pointList.append([point.co[0], point.co[1]])
+                curIndex += 1
+            pathList = []
+            for i in range(splineStartIndex, curIndex):
+                pathList.append(i)
+            pathsList.append(pathList)
+
         fw("\n/////////////////////\n// geometry for %s\n" % objectName)
-        fw("function %s_paths() = [[\n" % objectName)
-        for index, face in enumerate(mesh.vertices):
-            if index != 0:
-              fw(',')
-            fw("%d" % (index))
-        fw("]];\n")
-        # drop our vert positions
+        fw("function %s_paths() = [\n" % objectName)
+
+        # generate paths
+        for pathindex, pathlist in enumerate(pathsList):
+            if pathindex != 0:
+                fw(',')
+            fw("[")
+            for index, pointindex in enumerate(pathlist):
+                if index != 0:
+                    fw(',')
+                fw("%d" % (pointindex))
+            fw("]")
+        fw("];\n")
+
+        # generate vert positions
         fw("function %s_points() = [\n" % objectName)
-        for vertex in mesh.vertices:
-            if vertex.index != 0:
+        for index, point in enumerate(pointList):
+            if index != 0:
                 fw(",")
-            fw("[%f,%f]" % (vertex.co.x,vertex.co.y))
+            fw("[%f,%f]" % (point[0], point[1]))
         fw("];\n")
         # define our module
         fw("module %s() {\n" % objectName)
         fw("    polygon(points = %s_points(), paths = %s_paths());\n" % (objectName, objectName))
         fw("};\n")
     else:
-        print("ERROR: tried to export a mesh without sufficient verts!")
+        print("ERROR: tried to export a curve without sufficient points!")
 
 # output an object
 def write_mesh( fw, object, mesh ):
@@ -254,8 +278,7 @@ def _write(context, filepath, EXPORT_APPLY_MODIFIERS):
         # EXPORT THE SHAPES.
         # See if we're a 2D curve
         if object.type=='CURVE':
-            bpy.ops.object.convert(target='MESH', keep_original=False)
-            write_curve(fw, object, object.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW') )
+            write_curve(fw, object)
         else:
             if object.type == 'MESH' and object.data.shape_keys:
                 write_shapekeys( fw, object )
