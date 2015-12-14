@@ -108,7 +108,7 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
 
         # drop our geometry
         fw("\n/////////////////////\n// geometry for %s\n" % objectName)
-        fw("function %s_triangles() = [\n" % objectName)
+        fw("function %s_faces() = [\n" % objectName)
         for index, face in enumerate(mesh.polygons):
             face_verts = face.vertices
             if index != 0:
@@ -147,7 +147,7 @@ def write_shapekeys( fw, object, EXPORT_CUSTOMIZER_MARKUP=False ):
                         fw("*%s_factor/100)" % keyblock.name)
             fw("]")
         fw("];")
-        fw("    multmatrix(%s_multmatrix()) polyhedron(triangles = %s_triangles(), points = %s_shapes_points, convexity=10);\n" % (objectName, objectName, objectName))
+        fw("    multmatrix(%s_multmatrix()) polyhedron(faces = %s_faces(), points = %s_shapes_points, convexity=10);\n" % (objectName, objectName, objectName))
         fw("};\n")
 
     else:
@@ -219,7 +219,7 @@ def write_mesh( fw, object, mesh ):
     if (len(mesh.polygons) + len(mesh.vertices)):
         # drop our geometry
         fw("\n/////////////////////\n// geometry for %s\n" % objectName)
-        fw("function %s_triangles() = [\n" % objectName)
+        fw("function %s_faces() = [\n" % objectName)
         for index, face in enumerate(mesh.polygons):
             face_verts = face.vertices
             if index != 0:
@@ -239,7 +239,7 @@ def write_mesh( fw, object, mesh ):
         fw("];")
         # define our module
         fw("module %s() {\n" % objectName)
-        fw("    multmatrix(%s_multmatrix()) polyhedron(triangles = %s_triangles(), points = %s_points(), convexity=10);\n" % (objectName, objectName, objectName))
+        fw("    multmatrix(%s_multmatrix()) polyhedron(faces = %s_faces(), points = %s_points(), convexity=10);\n" % (objectName, objectName, objectName))
         fw("};\n")
     else:
         print("ERROR: tried to export a mesh without sufficient verts!")
