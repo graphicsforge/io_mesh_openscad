@@ -1,15 +1,16 @@
 io_mesh_openscad
 ================
 
-Blender output module for OpenSCAD
+Blender output module for [OpenSCAD](http://www.openscad.org/)
 
-A module for blender 2.74 that outputs meshes in OpenSCAD compatible format.
-Clone into your blender addon directory, and enable in your user preferences.
-
-OpenSCAD is http://www.openscad.org/
+A module for Blender 2.8x that outputs meshes in [OpenSCAD](http://www.openscad.org/) compatible format.
+Clone into your blender addon directory ([Blender's Directory Layout](https://docs.blender.org/manual/en/latest/advanced/blender_directory_layout.html)), and enable in your user preferences.
 
 Version History
 ================
+v0.4.1 
+ - make addon compatible with blender version >= 2.8x
+
 v0.4
  - support for multi spline paths ( [atartanian](https://github.com/atartanian) )
 
