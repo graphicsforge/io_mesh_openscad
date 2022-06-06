@@ -21,8 +21,8 @@
 bl_info = {
     "name": "OpenSCAD Exporter (.scad)",
     "author": "Peter Yee (GraphicsForge)",
-    "version": (0, 4),
-    "blender": (2, 7, 4),
+    "version": (0, 4, 1),
+    "blender": (2, 80, 0),
     "location": "File > Import-Export > openscad",
     "description": "Output a mesh into an openscad file",
     "warning": "",
@@ -71,18 +71,17 @@ class ExportOpenSCAD(Operator, ExportHelper):
 
 
 def menu_export(self, context):
-  default_path = os.path.splitext(bpy.data.filepath)[0] + ".scad"
   self.layout.operator(ExportOpenSCAD.bl_idname, text="openscad (.scad)")
 
 
 def register():
-  bpy.utils.register_module(__name__)
-  bpy.types.INFO_MT_file_export.append(menu_export)
+  bpy.utils.register_class(ExportOpenSCAD)
+  bpy.types.TOPBAR_MT_file_export.append(menu_export)
 
 
 def unregister():
-  bpy.utils.unregister_module(__name__)
-  bpy.types.INFO_MT_file_export.remove(menu_export)
+  bpy.utils.unregister_class(ExportOpenSCAD)
+  bpy.types.TOPBAR_MT_file_export.remove(menu_export)
 
 
 if __name__ == "__main__":

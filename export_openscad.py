@@ -283,7 +283,7 @@ def _write(context, filepath, EXPORT_APPLY_MODIFIERS):
             if object.type == 'MESH' and object.data.shape_keys:
                 write_shapekeys( fw, object )
             elif object.type=='MESH':
-                write_mesh(fw, object, object.to_mesh(scene, EXPORT_APPLY_MODIFIERS, 'PREVIEW') )
+                write_mesh(fw, object, object.to_mesh() )
 
     # we're done here
     file.close()
